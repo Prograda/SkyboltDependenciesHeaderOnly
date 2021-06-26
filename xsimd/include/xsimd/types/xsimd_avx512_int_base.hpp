@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Wolf Vollprecht, Johan Mabille and Sylvain Corlay    *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -30,12 +32,46 @@ namespace xsimd
     __m256i res_high = detail::batch_kernel<value_type, N> :: func (avx_lhs##_high, avx_rhs##_high);  \
     XSIMD_RETURN_MERGED_AVX(res_low, res_high);
 
+    namespace detail
+    {
+        template <std::size_t N>
+        struct mask_type;
+
+        template <>
+        struct mask_type<8>
+        {
+            using type = __mmask8;
+        };
+
+        template <>
+        struct mask_type<16>
+        {
+            using type = __mmask16;
+        };
+
+        template <>
+        struct mask_type<32>
+        {
+            using type = __mmask32;
+        };
+
+        template <>
+        struct mask_type<64>
+        {
+            using type = __mmask64;
+        };
+
+        template <std::size_t N>
+        using mask_type_t = typename mask_type<N>::type;
+    }
+
     template <class T, std::size_t N>
     class avx512_int_batch : public simd_batch<batch<T, N>>
     {
     public:
 
         using base_type = simd_batch<batch<T, N>>;
+        using mask_type = detail::mask_type_t<N>;
 
         avx512_int_batch();
         explicit avx512_int_batch(T i);
@@ -48,6 +84,9 @@ namespace xsimd
 
         avx512_int_batch(const __m512i& rhs);
         avx512_int_batch& operator=(const __m512i& rhs);
+
+        avx512_int_batch(const batch_bool<T, N>& rhs);
+        avx512_int_batch& operator=(const batch_bool<T, N>& rhs);
 
         operator __m512i() const;
 
@@ -75,43 +114,62 @@ namespace xsimd
 
     namespace avx512_detail
     {
-        template<class Tup, std::size_t... Is>
-        __m512i revert_args_set_epi8(Tup&& t, detail::index_sequence<Is...>)
+        inline __m512i int_init(std::integral_constant<std::size_t, 1>,
+                         int8_t t0, int8_t t1, int8_t t2, int8_t t3,
+                         int8_t t4, int8_t t5, int8_t t6, int8_t t7,
+                         int8_t t8, int8_t t9, int8_t t10, int8_t t11,
+                         int8_t t12, int8_t t13, int8_t t14, int8_t t15,
+                         int8_t t16, int8_t t17, int8_t t18, int8_t t19,
+                         int8_t t20, int8_t t21, int8_t t22, int8_t t23,
+                         int8_t t24, int8_t t25, int8_t t26, int8_t t27,
+                         int8_t t28, int8_t t29, int8_t t30, int8_t t31,
+                         int8_t t32, int8_t t33, int8_t t34, int8_t t35,
+                         int8_t t36, int8_t t37, int8_t t38, int8_t t39,
+                         int8_t t40, int8_t t41, int8_t t42, int8_t t43,
+                         int8_t t44, int8_t t45, int8_t t46, int8_t t47,
+                         int8_t t48, int8_t t49, int8_t t50, int8_t t51,
+                         int8_t t52, int8_t t53, int8_t t54, int8_t t55,
+                         int8_t t56, int8_t t57, int8_t t58, int8_t t59,
+                         int8_t t60, int8_t t61, int8_t t62, int8_t t63)
         {
-            // funny, this instruction is not yet implemented in clang or gcc (will come in future versions)
 #if defined(__clang__) || __GNUC__
             return __extension__ (__m512i)(__v64qi)
             {
-                std::get<Is>(std::forward<Tup>(t))...
+              t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15,
+              t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31,
+              t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47,
+              t48, t49, t50, t51, t52, t53, t54, t55, t56, t57, t58, t59, t60, t61, t62, t63
             };
 #else
-            return _mm512_set_epi8(std::get<Is>(std::forward<Tup>(t))...);
+            return _mm512_set_epi8(
+              t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15,
+              t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31,
+              t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47,
+              t48, t49, t50, t51, t52, t53, t54, t55, t56, t57, t58, t59, t60, t61, t62, t63);
 #endif
         }
 
-        template<class Tup, std::size_t... Is>
-        __m512i revert_args_set_epi16(Tup&& t, detail::index_sequence<Is...>)
+        inline __m512i int_init(std::integral_constant<std::size_t, 2>,
+                         int16_t t0, int16_t t1, int16_t t2, int16_t t3,
+                         int16_t t4, int16_t t5, int16_t t6, int16_t t7,
+                         int16_t t8, int16_t t9, int16_t t10, int16_t t11,
+                         int16_t t12, int16_t t13, int16_t t14, int16_t t15,
+                         int16_t t16, int16_t t17, int16_t t18, int16_t t19,
+                         int16_t t20, int16_t t21, int16_t t22, int16_t t23,
+                         int16_t t24, int16_t t25, int16_t t26, int16_t t27,
+                         int16_t t28, int16_t t29, int16_t t30, int16_t t31)
         {
 #if defined(__clang__) || __GNUC__
             return __extension__ (__m512i)(__v32hi)
             {
-                std::get<Is>(std::forward<Tup>(t))...
+              t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15,
+              t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31
             };
 #else
-            return _mm512_set_epi16(std::get<Is>(std::forward<Tup>(t))...);
+            return _mm512_set_epi16(
+              t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15,
+              t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31);
 #endif
-        }
-
-        template <class... Args>
-        __m512i int_init(std::integral_constant<std::size_t, 1>, Args... args)
-        {
-            return revert_args_set_epi8(std::forward_as_tuple(args...), detail::make_index_sequence<sizeof...(Args)>{});
-        }
-
-        template <class... Args>
-        __m512i int_init(std::integral_constant<std::size_t, 2>, Args... args)
-        {
-            return revert_args_set_epi16(std::forward_as_tuple(args...), detail::make_index_sequence<sizeof...(Args)>{});
         }
 
         inline __m512i int_init(std::integral_constant<std::size_t, 4>,
@@ -207,6 +265,19 @@ namespace xsimd
     }
 
     template <class T, std::size_t N>
+    inline avx512_int_batch<T, N>::avx512_int_batch(const batch_bool<T, N>& rhs)
+        :   base_type(detail::batch_kernel<T, N>::select(rhs, batch<T, N>(T(1)), batch<T, N>(T(0))))
+    {
+    }
+
+    template <class T, std::size_t N>
+    avx512_int_batch<T, N>& avx512_int_batch<T, N>::operator=(const batch_bool<T, N>& rhs)
+    {
+        this->m_value = detail::batch_kernel<T, N>::select(rhs, batch<T, N>(T(1)), batch<T, N>(T(0)));
+        return *this;
+    }
+    
+    template <class T, std::size_t N>
     inline avx512_int_batch<T, N>::operator __m512i() const
     {
         return this->m_value;
@@ -264,6 +335,30 @@ namespace xsimd
         _mm512_storeu_si512(dst, this->m_value);
     }
 
+    namespace detail
+    {
+        template <class B>
+        struct avx512_int_kernel_base
+        {
+            using batch_type = B;
+
+            static batch_type fmin(const batch_type& lhs, const batch_type& rhs)
+            {
+                return min(lhs, rhs);
+            }
+
+            static batch_type fmax(const batch_type& lhs, const batch_type& rhs)
+            {
+                return max(lhs, rhs);
+            }
+
+            static batch_type fabs(const batch_type& rhs)
+            {
+                return abs(rhs);
+            }
+        };
+    }
+
     namespace avx512_detail
     {
         template <class F, class T, std::size_t N>
@@ -273,6 +368,19 @@ namespace xsimd
             lhs.store_aligned(&tmp_lhs[0]);
             unroller<N>([&](std::size_t i) {
                 tmp_res[i] = f(tmp_lhs[i], rhs);
+            });
+            return batch<T, N>(tmp_res, aligned_mode());
+        }
+
+        template <class F, class T, class S, std::size_t N>
+        inline batch<T, N> shift_impl(F&& f, const batch<T, N>& lhs, const batch<S, N>& rhs)
+        {
+            alignas(64) T tmp_lhs[N], tmp_res[N];
+            alignas(64) S tmp_rhs[N];
+            lhs.store_aligned(&tmp_lhs[0]);
+            rhs.store_aligned(&tmp_rhs[0]);
+            unroller<N>([&](std::size_t i) {
+              tmp_res[i] = f(tmp_lhs[i], tmp_rhs[i]);
             });
             return batch<T, N>(tmp_res, aligned_mode());
         }

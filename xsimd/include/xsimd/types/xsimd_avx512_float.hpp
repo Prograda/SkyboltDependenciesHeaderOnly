@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -31,8 +33,7 @@ namespace xsimd
     };
 
     template <>
-    class batch_bool<float, 16> : public batch_bool_avx512<__mmask16, batch_bool<float, 16>>,
-                                  public simd_batch_bool<batch_bool<float, 16>>
+    class batch_bool<float, 16> : public batch_bool_avx512<__mmask16, batch_bool<float, 16>>
     {
     public:
         using base_class = batch_bool_avx512<__mmask16, batch_bool<float, 16>>;
@@ -75,10 +76,15 @@ namespace xsimd
         batch(float i0, float i1,  float i2,  float i3,  float i4,  float i5,  float i6,  float i7,
               float i8, float i9, float i10, float i11, float i12, float i13, float i14, float i15);
         explicit batch(const float* src);
+
         batch(const float* src, aligned_mode);
         batch(const float* src, unaligned_mode);
+        
         batch(const __m512& rhs);
         batch& operator=(const __m512& rhs);
+
+        batch(const batch_bool<float, 16>& rhs);
+        batch& operator=(const batch_bool<float, 16>& rhs);
 
         operator __m512() const;
 
@@ -140,6 +146,8 @@ namespace xsimd
     {
         return this->m_value;
     }
+
+    XSIMD_DEFINE_LOAD_STORE(float, 16, bool, 64)
 
     inline batch<float, 16>& batch<float, 16>::load_aligned(const int8_t* src)
     {
@@ -577,6 +585,18 @@ namespace xsimd
             }
         };
     }
+
+    inline batch<float, 16>::batch(const batch_bool<float, 16>& rhs)
+        : base_type(detail::batch_kernel<float, 16>::select(rhs, batch(float(1)), batch(float(0))))
+    {
+    }
+
+    inline batch<float, 16>& batch<float, 16>::operator=(const batch_bool<float, 16>& rhs)
+    {
+        this->m_value = detail::batch_kernel<float, 16>::select(rhs, batch(float(1)), batch(float(0)));
+        return *this;
+    }
+
 }
 
 #endif

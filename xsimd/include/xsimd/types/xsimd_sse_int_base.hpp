@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Wolf Vollprecht, Johan Mabille and Sylvain Corlay    *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -41,11 +43,16 @@ namespace xsimd
 
     private:
 
+        template <class... Args>
+        batch_bool<T, N>& load_values(Args... args);
+
         union
         {
             __m128i m_value;
             T m_array[N];
         };
+
+        friend class simd_batch_bool<batch_bool<T, N>>;
     };
 
     /***********************
@@ -58,16 +65,20 @@ namespace xsimd
     public:
 
         using base_type = simd_batch<batch<T, N>>;
+        using batch_bool_type = typename base_type::batch_bool_type;
 
         sse_int_batch();
         explicit sse_int_batch(T i);
         template <class... Args, class Enable = detail::is_array_initializer_t<T, N, Args...>>
-        sse_int_batch(Args... args);
+        constexpr sse_int_batch(Args... args);
         explicit sse_int_batch(const T* src);
         sse_int_batch(const T* src, aligned_mode);
         sse_int_batch(const T* src, unaligned_mode);
         sse_int_batch(const __m128i& rhs);
-        sse_int_batch& operator=(const __m128i& rhs);
+        sse_int_batch(const batch_bool_type& rhs);
+
+        batch<T, N>& operator=(const __m128i& rhs);
+        batch<T, N>& operator=(const batch_bool_type& rhs);
 
         operator __m128i() const;
 
@@ -212,7 +223,16 @@ namespace xsimd
     {
         return m_value;
     }
-
+    
+    template <class T, std::size_t N>
+    template <class... Args>
+    inline batch_bool<T, N>& sse_int_batch_bool<T, N>::load_values(Args... args)
+    {
+        m_value = sse_detail::int_init(std::integral_constant<std::size_t, sizeof(T)>{},
+                                       static_cast<T>(args ? typename std::make_signed<T>::type{-1} : 0)...);
+        return (*this)();
+    }
+    
     namespace detail
     {
         template <class T>
@@ -304,7 +324,7 @@ namespace xsimd
 
     template <class T, std::size_t N>
     template <class... Args, class>
-    inline sse_int_batch<T, N>::sse_int_batch(Args... args)
+    constexpr inline sse_int_batch<T, N>::sse_int_batch(Args... args)
         : base_type(sse_detail::int_init(std::integral_constant<std::size_t, sizeof(T)>{}, args...))
     {
     }
@@ -334,12 +354,25 @@ namespace xsimd
     }
 
     template <class T, std::size_t N>
-    inline sse_int_batch<T, N>& sse_int_batch<T, N>::operator=(const __m128i& rhs)
+    inline sse_int_batch<T, N>::sse_int_batch(const batch_bool_type& rhs)
+        : base_type(_mm_and_si128(rhs, batch<T, N>(1)))
     {
-        this->m_value = rhs;
-        return *this;
     }
 
+    template <class T, std::size_t N>
+    inline batch<T, N>& sse_int_batch<T, N>::operator=(const __m128i& rhs)
+    {
+        this->m_value = rhs;
+        return (*this)();
+    }
+
+    template <class T, std::size_t N>
+    inline batch<T, N>& sse_int_batch<T, N>::operator=(const batch_bool_type& rhs)
+    {
+        this->m_value = _mm_and_si128(rhs, batch<T, N>(1));
+        return (*this)();
+    }
+    
     template <class T, std::size_t N>
     inline sse_int_batch<T, N>::operator __m128i() const
     {
@@ -459,6 +492,21 @@ namespace xsimd
                 return _mm_andnot_si128(lhs, rhs);
             }
 
+            static batch_type fmin(const batch_type& lhs, const batch_type& rhs)
+            {
+                return min(lhs, rhs);
+            }
+
+            static batch_type fmax(const batch_type& lhs, const batch_type& rhs)
+            {
+                return max(lhs, rhs);
+            }
+
+            static batch_type fabs(const batch_type& rhs)
+            {
+                return abs(rhs);
+            }
+
             static batch_type fma(const batch_type& x, const batch_type& y, const batch_type& z)
             {
                 return x * y + z;
@@ -490,6 +538,19 @@ namespace xsimd
             lhs.store_aligned(&tmp_lhs[0]);
             unroller<N>([&](std::size_t i) {
                 tmp_res[i] = f(tmp_lhs[i], rhs);
+            });
+            return batch<T, N>(tmp_res, aligned_mode());
+        }
+
+        template <class F, class T, class S, std::size_t N>
+        inline batch<T, N> shift_impl(F&& f, const batch<T, N>& lhs, const batch<S, N>& rhs)
+        {
+            alignas(16) T tmp_lhs[N], tmp_res[N];
+            alignas(16) S tmp_rhs[N];
+            lhs.store_aligned(&tmp_lhs[0]);
+            rhs.store_aligned(&tmp_rhs[0]);
+            unroller<N>([&](std::size_t i) {
+              tmp_res[i] = f(tmp_lhs[i], tmp_rhs[i]);
             });
             return batch<T, N>(tmp_res, aligned_mode());
         }

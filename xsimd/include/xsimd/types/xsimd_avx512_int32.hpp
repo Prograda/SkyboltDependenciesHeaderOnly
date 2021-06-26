@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -39,8 +41,7 @@ namespace xsimd
 
     template <>
     class batch_bool<int32_t, 16> :
-        public batch_bool_avx512<__mmask16, batch_bool<int32_t, 16>>,
-        public simd_batch_bool<batch_bool<int32_t, 16>>
+        public batch_bool_avx512<__mmask16, batch_bool<int32_t, 16>>
     {
     public:
         using base_class = batch_bool_avx512<__mmask16, batch_bool<int32_t, 16>>;
@@ -49,8 +50,7 @@ namespace xsimd
 
     template <>
     class batch_bool<uint32_t, 16> :
-        public batch_bool_avx512<__mmask16, batch_bool<uint32_t, 16>>,
-        public simd_batch_bool<batch_bool<uint32_t, 16>>
+        public batch_bool_avx512<__mmask16, batch_bool<uint32_t, 16>>
     {
     public:
         using base_class = batch_bool_avx512<__mmask16, batch_bool<uint32_t, 16>>;
@@ -155,6 +155,7 @@ namespace xsimd
     {
         template <class T>
         struct avx512_int32_batch_kernel
+            : avx512_int_kernel_base<batch<T, 16>>
         {
             using batch_type = batch<T, 16>;
             using value_type = T;
@@ -354,12 +355,20 @@ namespace xsimd
 
     inline batch<int32_t, 16> operator<<(const batch<int32_t, 16>& lhs, int32_t rhs)
     {
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        return _mm512_sllv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
         return _mm512_slli_epi32(lhs, rhs);
+#endif
     }
 
     inline batch<int32_t, 16> operator>>(const batch<int32_t, 16>& lhs, int32_t rhs)
     {
-        return _mm512_srli_epi32(lhs, rhs);
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        return _mm512_srav_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
+        return _mm512_srai_epi32(lhs, rhs);
+#endif
     }
 
     inline batch<int32_t, 16> operator<<(const batch<int32_t, 16>& lhs, const batch<int32_t, 16>& rhs)
@@ -369,17 +378,25 @@ namespace xsimd
 
     inline batch<int32_t, 16> operator>>(const batch<int32_t, 16>& lhs, const batch<int32_t, 16>& rhs)
     {
-        return _mm512_srlv_epi32(lhs, rhs);
+        return _mm512_srav_epi32(lhs, rhs);
     }
 
     inline batch<uint32_t, 16> operator<<(const batch<uint32_t, 16>& lhs, int32_t rhs)
     {
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        return _mm512_sllv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
         return _mm512_slli_epi32(lhs, rhs);
+#endif
     }
 
     inline batch<uint32_t, 16> operator>>(const batch<uint32_t, 16>& lhs, int32_t rhs)
     {
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        return _mm512_srlv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
         return _mm512_srli_epi32(lhs, rhs);
+#endif
     }
 
     inline batch<uint32_t, 16> operator<<(const batch<uint32_t, 16>& lhs, const batch<int32_t, 16>& rhs)

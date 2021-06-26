@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -10,19 +12,10 @@
 #define XSIMD_HORNER_HPP
 
 #include "../types/xsimd_types_include.hpp"
+#include "xsimd_estrin.hpp"
 
 namespace xsimd
 {
-
-    namespace detail
-    {
-        template <class T, uint64_t c>
-        inline T coef() noexcept
-        {
-            using value_type = typename T::value_type;
-            return T(caster_t<value_type>(as_unsigned_integer_t<value_type>(c)).f);
-        }
-    }
 
     /**********
      * horner *

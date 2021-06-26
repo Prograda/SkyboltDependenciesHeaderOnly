@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -636,4 +638,5 @@ namespace xsimd
 #undef GET_HIGH_WORD
 #undef HIGH_WORD_IDX
 #undef LOW_WORD_IDX
+#undef ONCE0
 }

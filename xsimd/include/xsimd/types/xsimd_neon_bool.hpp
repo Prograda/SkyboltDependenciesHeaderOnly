@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Wolf Vollprecht, Johan Mabille and Sylvain Corlay    *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -97,11 +99,15 @@ namespace xsimd
 
     private:
 
+        batch_bool<T, 8>& load_values(bool b0, bool b1, bool b2, bool b3,
+                                      bool b4, bool b5, bool b6, bool b7);
         union
         {
             simd_type m_value;
             uint16_t m_array[8];
         };
+
+        friend class simd_batch_bool<batch_bool<T, 8>>;
     };
 
     /********************
@@ -140,11 +146,15 @@ namespace xsimd
 
     private:
 
+        batch_bool<T, 4>& load_values(bool b0, bool b1, bool b2, bool b3);
+
         union
         {
             simd_type m_value;
             uint32_t m_array[4];
         };
+
+        friend class simd_batch_bool<batch_bool<T, 4>>;
     };
 
     /********************
@@ -183,11 +193,15 @@ namespace xsimd
 
     private:
 
+        batch_bool<T, 2>& load_values(bool b0, bool b1);
+
         union
         {
             simd_type m_value;
             uint64_t m_array[2];
         };
+
+        friend class simd_batch_bool<batch_bool<T, 2>>;
     };
 
     /*********************
@@ -212,9 +226,9 @@ namespace xsimd
 
         batch_bool();
         explicit batch_bool(bool b);
-        batch_bool( bool d1,  bool d2,  bool d3,  bool d4,
-                    bool d5,  bool d6,  bool d7,  bool d8,
-                    bool d9, bool d10, bool d11, bool d12,
+        batch_bool(bool d1,  bool d2,  bool d3,  bool d4,
+                   bool d5,  bool d6,  bool d7,  bool d8,
+                   bool d9, bool d10, bool d11, bool d12,
                    bool d13, bool d14, bool d15, bool d16);
         batch_bool(const simd_type& rhs);
         template <class V>
@@ -229,11 +243,18 @@ namespace xsimd
 
     private:
 
+        batch_bool<T, 16>& load_values(bool d1,  bool d2,  bool d3,  bool d4,
+                                       bool d5,  bool d6,  bool d7,  bool d8,
+                                       bool d9, bool d10, bool d11, bool d12,
+                                       bool d13, bool d14, bool d15, bool d16);
+
         union
         {
             simd_type m_value;
             uint8_t m_array[16];
         };
+
+        friend class simd_batch_bool<batch_bool<T, 16>>;
     };
 
     /***********************************
@@ -306,6 +327,21 @@ namespace xsimd
         return static_cast<bool>(m_array[index & 7]);
     }
 
+    template <class T>
+    inline batch_bool<T, 8>& batch_bool<T, 8>::load_values(bool b0, bool b1, bool b2, bool b3,
+                                                           bool b4, bool b5, bool b6, bool b7)
+    {
+        m_value[0] = static_cast<uint16_t>(-int(b0));
+        m_value[1] = static_cast<uint16_t>(-int(b1));
+        m_value[2] = static_cast<uint16_t>(-int(b2));
+        m_value[3] = static_cast<uint16_t>(-int(b3));
+        m_value[4] = static_cast<uint16_t>(-int(b4));
+        m_value[5] = static_cast<uint16_t>(-int(b5));
+        m_value[6] = static_cast<uint16_t>(-int(b6));
+        m_value[7] = static_cast<uint16_t>(-int(b7));
+        return *this;
+    }
+
     namespace detail
     {
         template <class T>
@@ -350,14 +386,26 @@ namespace xsimd
 
             static bool all(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vminvq_u16(rhs) != 0;
+#else
                 uint16x4_t tmp = vand_u16(vget_low_u16(rhs), vget_high_u16(rhs));
-                return vget_lane_u16(vpmin_u16(tmp, tmp), 0) != 0;
+                tmp = vpmin_u16(tmp, tmp);
+                tmp = vpmin_u16(tmp, tmp);
+                return vget_lane_u16(tmp, 0) != 0;
+#endif
             }
 
             static bool any(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vmaxvq_u16(rhs) != 0;
+#else
                 uint16x4_t tmp = vorr_u16(vget_low_u16(rhs), vget_high_u16(rhs));
-                return vget_lane_u16(vpmax_u16(tmp, tmp), 0);
+                tmp = vpmax_u16(tmp, tmp);
+                tmp = vpmax_u16(tmp, tmp);
+                return vget_lane_u16(tmp, 0);
+#endif
             }
         };
     }
@@ -427,6 +475,16 @@ namespace xsimd
         return static_cast<bool>(m_array[index & 3]);
     }
 
+    template <class T>
+    inline batch_bool<T, 4>& batch_bool<T, 4>::load_values(bool b0, bool b1, bool b2, bool b3)
+    {
+        m_value[0] = static_cast<uint32_t>(-int(b0));
+        m_value[1] = static_cast<uint32_t>(-int(b1));
+        m_value[2] = static_cast<uint32_t>(-int(b2));
+        m_value[3] = static_cast<uint32_t>(-int(b3));
+        return *this;
+    }
+
     namespace detail
     {
         template <class T>
@@ -471,14 +529,22 @@ namespace xsimd
 
             static bool all(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vminvq_u32(rhs) != 0;
+#else
                 uint32x2_t tmp = vand_u32(vget_low_u32(rhs), vget_high_u32(rhs));
                 return vget_lane_u32(vpmin_u32(tmp, tmp), 0) != 0;
+#endif
             }
 
             static bool any(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vmaxvq_u32(rhs) != 0;
+#else
                 uint32x2_t tmp = vorr_u32(vget_low_u32(rhs), vget_high_u32(rhs));
                 return vget_lane_u32(vpmax_u32(tmp, tmp), 0);
+#endif
             }
         };
     }
@@ -501,9 +567,9 @@ namespace xsimd
     }
 
     template <class T>
-    inline batch_bool<T, 16>::batch_bool( bool b1,  bool b2,  bool b3,  bool b4,
-                                          bool b5,  bool b6,  bool b7,  bool b8,
-                                          bool b9, bool b10, bool b11, bool b12,
+    inline batch_bool<T, 16>::batch_bool(bool b1,  bool b2,  bool b3,  bool b4,
+                                         bool b5,  bool b6,  bool b7,  bool b8,
+                                         bool b9, bool b10, bool b11, bool b12,
                                          bool b13, bool b14, bool b15, bool b16)
         : m_value{
             static_cast<uint8_t>(-int(b1)),
@@ -563,6 +629,31 @@ namespace xsimd
         return static_cast<bool>(m_array[index & 15]);
     }
 
+    template <class T>
+    inline batch_bool<T, 16>& batch_bool<T, 16>::load_values(bool b1,  bool b2,  bool b3,  bool b4,
+                                                             bool b5,  bool b6,  bool b7,  bool b8,
+                                                             bool b9,  bool b10, bool b11, bool b12,
+                                                             bool b13, bool b14, bool b15, bool b16)
+    {
+        m_value[0] = static_cast<uint8_t>(-int(b1));
+        m_value[1] = static_cast<uint8_t>(-int(b2));
+        m_value[2] = static_cast<uint8_t>(-int(b3));
+        m_value[3] = static_cast<uint8_t>(-int(b4));
+        m_value[4] = static_cast<uint8_t>(-int(b5));
+        m_value[5] = static_cast<uint8_t>(-int(b6));
+        m_value[6] = static_cast<uint8_t>(-int(b7));
+        m_value[7] = static_cast<uint8_t>(-int(b8));
+        m_value[8] = static_cast<uint8_t>(-int(b9));
+        m_value[9] = static_cast<uint8_t>(-int(b10));
+        m_value[10] = static_cast<uint8_t>(-int(b11));
+        m_value[11] = static_cast<uint8_t>(-int(b12));
+        m_value[12] = static_cast<uint8_t>(-int(b13));
+        m_value[13] = static_cast<uint8_t>(-int(b14));
+        m_value[14] = static_cast<uint8_t>(-int(b15));
+        m_value[15] = static_cast<uint8_t>(-int(b16));
+        return *this;
+    }
+
     namespace detail
     {
         template <class T>
@@ -607,14 +698,28 @@ namespace xsimd
 
             static bool all(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vminvq_u8(rhs) != 0;
+#else
                 uint8x8_t tmp = vand_u8(vget_low_u8(rhs), vget_high_u8(rhs));
-                return vget_lane_u8(vpmin_u8(tmp, tmp), 0) != 0;
+                tmp = vpmin_u8(tmp, tmp);
+                tmp = vpmin_u8(tmp, tmp);
+                tmp = vpmin_u8(tmp, tmp);
+                return vget_lane_u8(tmp, 0) != 0;
+#endif
             }
 
             static bool any(const batch_type& rhs)
             {
+#if XSIMD_ARM_INSTR_SET >= XSIMD_ARM8_64_NEON_VERSION
+                return vmaxvq_u8(rhs) != 0;
+#else
                 uint8x8_t tmp = vorr_u8(vget_low_u8(rhs), vget_high_u8(rhs));
-                return vget_lane_u8(vpmax_u8(tmp, tmp), 0);
+                tmp = vpmax_u8(tmp, tmp);
+                tmp = vpmax_u8(tmp, tmp);
+                tmp = vpmax_u8(tmp, tmp);
+                return vget_lane_u8(tmp, 0);
+#endif
             }
         };
     }
@@ -635,10 +740,10 @@ namespace xsimd
     }
 
     template <class T>
-    inline batch_bool<T, 2>::batch_bool(bool b1, bool b2)
+    inline batch_bool<T, 2>::batch_bool(bool b0, bool b1)
         : m_value{
-            static_cast<uint64_t>(-int(b1)),
-            static_cast<uint64_t>(-int(b2))}
+            static_cast<uint64_t>(-int(b0)),
+            static_cast<uint64_t>(-int(b1))}
     {
     }
 
@@ -678,6 +783,14 @@ namespace xsimd
     inline bool batch_bool<T, 2>::operator[](std::size_t index) const
     {
         return static_cast<bool>(m_array[index & 1]);
+    }
+
+    template <class T>
+    inline batch_bool<T, 2>& batch_bool<T, 2>::load_values(bool b0, bool b1)
+    {
+        m_value[0] = static_cast<uint64_t>(-int(b0));
+        m_value[1] = static_cast<uint64_t>(-int(b1));
+        return *this;
     }
 
     namespace detail

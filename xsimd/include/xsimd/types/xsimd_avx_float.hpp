@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -50,11 +52,16 @@ namespace xsimd
 
     private:
 
+        batch_bool<float, 8>& load_values(bool b0, bool b1, bool b2, bool b3,
+                                          bool b4, bool b5, bool b6, bool b7);
+
         union
         {
             __m256 m_value;
             float m_array[8];
         };
+
+        friend class simd_batch_bool<batch_bool<float, 8>>;
     };
 
     /*******************
@@ -78,17 +85,23 @@ namespace xsimd
 
         using self_type = batch<float, 8>;
         using base_type = simd_batch<self_type>;
+        using batch_bool_type = typename base_type::batch_bool_type;
 
         batch();
         explicit batch(float f);
         batch(float f0, float f1, float f2, float f3,
               float f4, float f5, float f6, float f7);
         explicit batch(const float* src);
+
         batch(const float* src, aligned_mode);
         batch(const float* src, unaligned_mode);
+        
         batch(const __m256& rhs);
         batch& operator=(const __m256& rhs);
 
+        batch(const batch_bool_type& rhs);
+        batch& operator=(const batch_bool_type& rhs);
+        
         operator __m256() const;
 
         XSIMD_DECLARE_LOAD_STORE_ALL(float, 8)
@@ -132,6 +145,17 @@ namespace xsimd
         return *this;
     }
 
+    inline batch<float, 8>::batch(const batch_bool_type& rhs)
+        : base_type(_mm256_and_ps(rhs, batch(1.f)))
+    {
+    }
+
+    inline batch<float, 8>& batch<float, 8>::operator=(const batch_bool_type& rhs)
+    {
+        this->m_value = _mm256_and_ps(rhs, batch(1.f));
+        return *this;
+    }
+
     inline batch_bool<float, 8>::operator __m256() const
     {
         return m_value;
@@ -150,6 +174,15 @@ namespace xsimd
     inline __m256 batch_bool<float, 8>::get_value() const
     {
         return m_value;
+    }
+
+    inline batch_bool<float, 8>& batch_bool<float, 8>::load_values(bool b0, bool b1, bool b2, bool b3,
+                                                                   bool b4, bool b5, bool b6, bool b7)
+    {
+        m_value = _mm256_castsi256_ps(
+              _mm256_setr_epi32(-(int)b0, -(int)b1, -(int)b2, -(int)b3,
+                                -(int)b4, -(int)b5, -(int)b6, -(int)b7));
+        return *this;
     }
 
     namespace detail
@@ -266,6 +299,8 @@ namespace xsimd
     {
         return this->m_value;
     }
+
+    XSIMD_DEFINE_LOAD_STORE(float, 8, bool, 32)
 
     inline batch<float, 8>& batch<float, 8>::load_aligned(const int8_t* src)
     {
@@ -669,6 +704,13 @@ namespace xsimd
             static batch_type select(const batch_bool_type& cond, const batch_type& a, const batch_type& b)
             {
                 return _mm256_blendv_ps(b, a, cond);
+            }
+
+            template<bool... Values>
+            static batch_type select(const batch_bool_constant<value_type, Values...>&, const batch_type& a, const batch_type& b)
+            {
+                constexpr int mask = batch_bool_constant<value_type, Values...>::mask();
+                return _mm256_blend_ps(b, a, mask);
             }
 
             static batch_bool_type isnan(const batch_type& x)

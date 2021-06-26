@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -282,8 +284,8 @@ namespace xsimd
 
 #define XSIMD_MACRO_UNROLL_BINARY(FUNC)                                                                   \
     constexpr std::size_t size = simd_batch_traits<batch_type>::size;                                     \
-    using value_type = typename simd_batch_traits<batch_type>::value_type;                                \
-    alignas(simd_batch_traits<batch_type>::align) value_type tmp_lhs[size], tmp_rhs[size], tmp_res[size]; \
+    using tmp_value_type = typename simd_batch_traits<batch_type>::value_type;                                \
+    alignas(simd_batch_traits<batch_type>::align) tmp_value_type tmp_lhs[size], tmp_rhs[size], tmp_res[size]; \
     lhs.store_aligned(tmp_lhs);                                                                           \
     rhs.store_aligned(tmp_rhs);                                                                           \
     unroller<size>([&](std::size_t i) {                                                                   \

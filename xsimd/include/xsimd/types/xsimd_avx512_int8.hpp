@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Wolf Vollprecht, Johan Mabille and Sylvain Corlay    *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -44,8 +46,7 @@ namespace xsimd
 
     template <>
     class batch_bool<int8_t, 64> :
-        public batch_bool_avx512<__mmask64, batch_bool<int8_t, 64>>,
-        public simd_batch_bool<batch_bool<int8_t, 64>>
+        public batch_bool_avx512<__mmask64, batch_bool<int8_t, 64>>
     {
     public:
 
@@ -55,8 +56,7 @@ namespace xsimd
 
     template <>
     class batch_bool<uint8_t, 64> :
-        public batch_bool_avx512<__mmask64, batch_bool<uint8_t, 64>>,
-        public simd_batch_bool<batch_bool<uint8_t, 64>>
+        public batch_bool_avx512<__mmask64, batch_bool<uint8_t, 64>>
     {
     public:
 
@@ -91,11 +91,11 @@ namespace xsimd
     };
 
     template <>
-    class batch_bool<uint8_t, 64> : public avx512_fallback_batch_bool<int8_t, 64>
+    class batch_bool<uint8_t, 64> : public avx512_fallback_batch_bool<uint8_t, 64>
     {
     public:
 
-        using base_class = avx512_fallback_batch_bool<int8_t, 64>;
+        using base_class = avx512_fallback_batch_bool<uint8_t, 64>;
         using base_class::base_class;
     };
 
@@ -110,7 +110,7 @@ namespace xsimd
 
         template <>
         struct batch_bool_kernel<uint8_t, 64>
-            : avx512_fallback_batch_bool_kernel<int8_t, 64>
+            : avx512_fallback_batch_bool_kernel<uint8_t, 64>
         {
         };
     }
@@ -192,8 +192,12 @@ namespace xsimd
 
     batch<int8_t, 64> operator<<(const batch<int8_t, 64>& lhs, int32_t rhs);
     batch<int8_t, 64> operator>>(const batch<int8_t, 64>& lhs, int32_t rhs);
+    batch<int8_t, 64> operator<<(const batch<int8_t, 64>& lhs, const batch<int8_t, 64>& rhs);
+    batch<int8_t, 64> operator>>(const batch<int8_t, 64>& lhs, const batch<int8_t, 64>& rhs);
     batch<uint8_t, 64> operator<<(const batch<uint8_t, 64>& lhs, int32_t rhs);
     batch<uint8_t, 64> operator>>(const batch<uint8_t, 64>& lhs, int32_t rhs);
+    batch<uint8_t, 64> operator<<(const batch<uint8_t, 64>& lhs, const batch<int8_t, 64>& rhs);
+    batch<uint8_t, 64> operator>>(const batch<uint8_t, 64>& lhs, const batch<int8_t, 64>& rhs);
 
     /************************************
      * batch<int8_t, 64> implementation *
@@ -203,6 +207,7 @@ namespace xsimd
     {
         template <class T>
         struct avx512_int8_batch_kernel
+            : avx512_int_kernel_base<batch<T, 64>>
         {
             using batch_type = batch<T, 64>;
             using value_type = T;
@@ -314,7 +319,11 @@ namespace xsimd
             static batch_type select(const batch_bool_type& cond, const batch_type& a, const batch_type& b)
             {
             #if defined(XSIMD_AVX512BW_AVAILABLE)
-                return _mm512_mask_blend_epi8(cond, b, a);
+                // Some compilers are not happy with passing directly a and b to the intrinsics
+                // See https://github.com/xtensor-stack/xsimd/issues/315
+                __m512i ma = a;
+                __m512i mb = b;
+                return _mm512_mask_blend_epi8(cond, mb, ma);
             #else
                 XSIMD_SPLIT_AVX512(cond);
                 XSIMD_SPLIT_AVX512(a);
@@ -334,7 +343,14 @@ namespace xsimd
         {
             static batch_type abs(const batch_type& rhs)
             {
+            #if defined(XSIMD_AVX512BW_AVAILABLE)
                 return _mm512_abs_epi8(rhs);
+            #else
+                XSIMD_SPLIT_AVX512(rhs);
+                __m256i res_low = _mm256_abs_epi8(rhs_low);
+                __m256i res_high = _mm256_abs_epi8(rhs_high);
+                XSIMD_RETURN_MERGED_AVX(res_low, res_high);
+            #endif
             }
 
             static batch_type min(const batch_type& lhs, const batch_type& rhs)
@@ -459,16 +475,40 @@ namespace xsimd
 
     inline batch<int8_t, 64> operator<<(const batch<int8_t, 64>& lhs, int32_t rhs)
     {
-        return avx_detail::shift_impl([](int8_t val, int32_t rhs) {
-            return val << rhs;
-        }, lhs, rhs);
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        __m512i tmp = _mm512_sllv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
+        __m512i tmp = _mm512_slli_epi32(lhs, rhs);
+#endif
+        return _mm512_and_si512(_mm512_set1_epi8(0xFF << rhs), tmp);
     }
 
     inline batch<int8_t, 64> operator>>(const batch<int8_t, 64>& lhs, int32_t rhs)
     {
-        return avx_detail::shift_impl([](int8_t val, int32_t rhs) {
-            return val >> rhs;
-        }, lhs, rhs);
+#if defined(XSIMD_AVX512BW_AVAILABLE)
+        __m512i sign_mask = _mm512_set1_epi16((0xFF00 >> rhs) & 0x00FF);
+        __m512i zeros = _mm512_setzero_si512();
+        __mmask64 cmp_is_negative_mask = _mm512_cmpgt_epi8_mask(zeros, lhs);
+        __m512i cmp_sign_mask = _mm512_mask_blend_epi8(cmp_is_negative_mask, zeros, sign_mask);
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        __m512i res = _mm512_srav_epi16(lhs, _mm512_set1_epi16(rhs));
+#else
+        __m512i res = _mm512_srai_epi16(lhs, rhs);
+#endif
+        return _mm512_or_si512(cmp_sign_mask, _mm512_andnot_si512(sign_mask, res));
+#else
+        return avx512_detail::shift_impl([](int8_t val, int32_t s) { return val >> s; }, lhs, rhs);
+#endif
+    }
+
+    inline batch<int8_t, 64> operator<<(const batch<int8_t, 64>& lhs, const batch<int8_t, 64>& rhs)
+    {
+        return avx512_detail::shift_impl([](int8_t val, int8_t s) { return val << s; }, lhs, rhs);
+    }
+
+    inline batch<int8_t, 64> operator>>(const batch<int8_t, 64>& lhs, const batch<int8_t, 64>& rhs)
+    {
+        return avx512_detail::shift_impl([](int8_t val, int8_t s) { return val >> s; }, lhs, rhs);
     }
 
     XSIMD_DEFINE_LOAD_STORE_INT8(int8_t, 64, 64)
@@ -476,16 +516,32 @@ namespace xsimd
 
     inline batch<uint8_t, 64> operator<<(const batch<uint8_t, 64>& lhs, int32_t rhs)
     {
-        return avx_detail::shift_impl([](uint8_t val, int32_t rhs) {
-            return val << rhs;
-        }, lhs, rhs);
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        __m512i tmp = _mm512_sllv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
+        __m512i tmp = _mm512_slli_epi32(lhs, rhs);
+#endif
+        return _mm512_and_si512(_mm512_set1_epi8(0xFF << rhs), tmp);
     }
 
     inline batch<uint8_t, 64> operator>>(const batch<uint8_t, 64>& lhs, int32_t rhs)
     {
-        return avx_detail::shift_impl([](uint8_t val, int32_t rhs) {
-            return val >> rhs;
-        }, lhs, rhs);
+#if defined(XSIMD_AVX512_SHIFT_INTRINSICS_IMM_ONLY)
+        __m512i tmp = _mm512_srlv_epi32(lhs, _mm512_set1_epi32(rhs));
+#else
+        __m512i tmp = _mm512_srli_epi32(lhs, rhs);
+#endif
+        return _mm512_and_si512(_mm512_set1_epi8(0xFF >> rhs), tmp);
+    }
+
+    inline batch<uint8_t, 64> operator<<(const batch<uint8_t, 64>& lhs, const batch<int8_t, 64>& rhs)
+    {
+        return avx512_detail::shift_impl([](uint8_t val, int8_t s) { return val << s; }, lhs, rhs);
+    }
+
+    inline batch<uint8_t, 64> operator>>(const batch<uint8_t, 64>& lhs, const batch<int8_t, 64>& rhs)
+    {
+        return avx512_detail::shift_impl([](uint8_t val, int8_t s) { return val >> s; }, lhs, rhs);
     }
 
     XSIMD_DEFINE_LOAD_STORE_INT8(uint8_t, 64, 64)

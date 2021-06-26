@@ -1,5 +1,7 @@
 /***************************************************************************
-* Copyright (c) 2016, Johan Mabille and Sylvain Corlay                     *
+* Copyright (c) Johan Mabille, Sylvain Corlay, Wolf Vollprecht and         *
+* Martin Renou                                                             *
+* Copyright (c) QuantStack                                                 *
 *                                                                          *
 * Distributed under the terms of the BSD 3-Clause License.                 *
 *                                                                          *
@@ -9,8 +11,8 @@
 #ifndef XSIMD_LOAD_STORE_HPP
 #define XSIMD_LOAD_STORE_HPP
 
-#include "xsimd/config/xsimd_config.hpp"
-#include "xsimd/types/xsimd_traits.hpp"
+#include "../config/xsimd_config.hpp"
+#include "../types/xsimd_traits.hpp"
 
 namespace xsimd
 {
@@ -26,7 +28,7 @@ namespace xsimd
      * @ingroup data_transfer
      * Returns a batch with all values initialized to \c value.
      * @param value the scalar used to initialize the batch.
-     * @return the batch wrapping the highest available instruction set. 
+     * @return the batch wrapping the highest available instruction set.
      */
     template <class T1, class T2 = T1>
     simd_return_type<T1, T2> set_simd(const T1& value);
@@ -36,7 +38,7 @@ namespace xsimd
      * Loads the memory array pointed to by \c src into a batch and returns it.
      * \c src is required to be aligned.
      * @param src the pointer to the memory array to load.
-     * @return the batch wrapping the highest available instruction set. 
+     * @return the batch wrapping the highest available instruction set.
      */
     template <class T1, class T2 = T1>
     simd_return_type<T1, T2> load_aligned(const T1* src);
@@ -129,6 +131,16 @@ namespace xsimd
 
     /**
      * @ingroup data_transfer
+     * Stores the boolean batch \c src into  the memory array pointed to by \c dst.
+     * \c dst is required to be aligned.
+     * @param dst the pointer to the memory array.
+     * @param src the boolean batch to store.
+     */
+    template <class T1, class T2 = T1>
+    void store_aligned(T1* dst, const simd_bool_type<T2>& src);
+
+    /**
+     * @ingroup data_transfer
      * Stores the batch \c src into  the memory array pointed to by \c dst.
      * \c dst is not required to be aligned.
      * @param dst the pointer to the memory array.
@@ -136,6 +148,16 @@ namespace xsimd
      */
     template <class T1, class T2 = T1>
     void store_unaligned(T1* dst, const simd_type<T2>& src);
+
+    /**
+     * @ingroup data_transfer
+     * Stores the boolean batch \c src into  the memory array pointed to by \c dst.
+     * \c dst is not required to be aligned.
+     * @param dst the pointer to the memory array.
+     * @param src the boolean batch to store.
+     */
+    template <class T1, class T2 = T1>
+    void store_unaligned(T1* dst, const simd_bool_type<T2>& src);
 
     /**
      * @ingroup data_transfer
@@ -265,6 +287,16 @@ namespace xsimd
 
     /**
      * @ingroup generic_load_store
+     * Stores the boolean batch \c src into  the memory array pointed to by \c dst.
+     * \c dst is required to be aligned.
+     * @param dst the pointer to the memory array.
+     * @param src the boolean batch to store.
+     */
+    template <class T1, class T2 = T1>
+    void store_simd(T1* dst, const simd_bool_type<T2>& src, aligned_mode);
+
+    /**
+     * @ingroup generic_load_store
      * Stores the batch \c src into  the memory array pointed to by \c dst.
      * \c dst is not required to be aligned.
      * @param dst the pointer to the memory array.
@@ -272,6 +304,16 @@ namespace xsimd
      */
     template <class T1, class T2 = T1>
     void store_simd(T1* dst, const simd_type<T2>& src, unaligned_mode);
+
+    /**
+     * @ingroup generic_load_store
+     * Stores the boolean batch \c src into  the memory array pointed to by \c dst.
+     * \c dst is not required to be aligned.
+     * @param dst the pointer to the memory array.
+     * @param src the boolean batch to store.
+     */
+    template <class T1, class T2 = T1>
+    void store_simd(T1* dst, const simd_bool_type<T2>& src, unaligned_mode);
 
     /**
      * @ingroup generic_load_store
@@ -298,13 +340,13 @@ namespace xsimd
     void store_simd(T1* real_dst, T1* imag_dst, const simd_type<T2>& src, unaligned_mode);
 
     // Prefetch
-    
+
     template <class T>
     void prefetch(const T* address);
 
 
     /***************************
-     * detail implementation 
+     * detail implementation
      ***************************/
 
     namespace detail
@@ -316,7 +358,10 @@ namespace xsimd
         {
             inline static V set_simd(const T& value)
             {
-                using value_type = typename V::value_type;
+                using batch_value_type = typename V::value_type;
+                using value_type = typename std::conditional<std::is_same<T, bool>::value,
+                                                             bool,
+                                                             batch_value_type>::type;
                 return V(value_type(value));
             }
 
@@ -496,9 +541,21 @@ namespace xsimd
     }
 
     template <class T1, class T2>
+    inline void store_aligned(T1* dst, const simd_bool_type<T2>& src)
+    {
+        detail::simd_function_invoker<T1, simd_bool_type<T2>>::store_aligned(dst, src);
+    }
+
+    template <class T1, class T2>
     inline void store_unaligned(T1* dst, const simd_type<T2>& src)
     {
         detail::simd_function_invoker<T1, simd_type<T2>>::store_unaligned(dst, src);
+    }
+
+    template <class T1, class T2>
+    inline void store_unaligned(T1* dst, const simd_bool_type<T2>& src)
+    {
+        detail::simd_function_invoker<T1, simd_bool_type<T2>>::store_unaligned(dst, src);
     }
 
     template <class T1, class T2>
@@ -572,7 +629,19 @@ namespace xsimd
     }
 
     template <class T1, class T2>
+    inline void store_simd(T1* dst, const simd_bool_type<T2>& src, aligned_mode)
+    {
+        store_aligned<T1, T2>(dst, src);
+    }
+
+    template <class T1, class T2>
     inline void store_simd(T1* dst, const simd_type<T2>& src, unaligned_mode)
+    {
+        store_unaligned<T1, T2>(dst, src);
+    }
+
+    template <class T1, class T2>
+    inline void store_simd(T1* dst, const simd_bool_type<T2>& src, unaligned_mode)
     {
         store_unaligned<T1, T2>(dst, src);
     }
@@ -598,7 +667,7 @@ namespace xsimd
     {
     }
 
-#if XSIMD_X86_INSTR_SET > XSIMD_INSTR_SET_NOT_AVAILABLE
+#if XSIMD_X86_INSTR_SET > XSIMD_VERSION_NUMBER_NOT_AVAILABLE
 
     template <>
     inline void prefetch<int32_t>(const int32_t* address)
