@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
-add_library(httplib INTERFACE)
 
-target_include_directories(httplib INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
+if(NOT TARGET httplib::httplib)
+	add_library(httplib::httplib INTERFACE IMPORTED)
+	target_include_directories(httplib::httplib INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
+endif()
